@@ -33,7 +33,14 @@ def save_all(pattern: List[List[int]] | None, cfg: dict) -> None:
 
     start_date = _calculate_start_date(bool(cfg.get("start_from_next_sunday")), mode)
 
-    _write_pattern_json(repo_path, pattern, start_date, mode, int(cfg.get("daily_commit_count", 0)))
+    _write_pattern_json(
+        repo_path,
+        pattern,
+        start_date,
+        mode,
+        int(cfg.get("daily_commit_count", 0)),
+        cfg.get("github_username"),
+    )
     _write_workflow(repo_path, cfg)
     _write_painter_script(repo_path)
     _write_agreement(repo_path)
@@ -57,12 +64,14 @@ def _write_pattern_json(
     start_date: _dt.date,
     mode: str,
     daily_commit_count: int,
+    github_username: str | None = None,
 ) -> None:
     data = {
         "mode": mode,
         "start_date": start_date.isoformat(),
         "pattern": pattern,
         "daily_commit_count": daily_commit_count,
+        "github_username": github_username or "",
     }
     path = repo_path / "pattern.json"
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -156,6 +165,8 @@ import string
 import subprocess
 from pathlib import Path
 from typing import Optional
+import urllib.request
+import urllib.error
 
 
 def main() -> int:
@@ -213,12 +224,15 @@ def main() -> int:
         except (ValueError, TypeError):
             need = 0
 
-    identity = os.environ.get("GITHUB_ACTOR") or os.environ.get("COMMITTER_NAME")
+    actor = os.environ.get("GITHUB_ACTOR") or (data.get("github_username") or "").strip()
+    identity = actor or os.environ.get("COMMITTER_NAME")
     commits_today = _count_commits_today(repo_root, identity)
     if commits_today is None:
         return 1
     if commits_today > need:
-        print(f"今日已有 {commits_today} 次提交，超过目标 {need}。请检查图案或等待明日。")
+        message = f"今日已有 {commits_today} 次提交，超过目标 {need}。请检查图案或等待明日。"
+        print(message)
+        _create_issue(repo_root, message, actor)
         return 1
 
     if need <= 0:
@@ -279,6 +293,72 @@ def _count_commits_today(repo_root: Path, identity: Optional[str]):
         return None
     count = sum(1 for line in proc.stdout.splitlines() if line.strip())
     return count
+
+
+def _create_issue(repo_root: Path, message: str, actor: Optional[str]) -> None:
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        print("缺少 GITHUB_TOKEN，无法创建提醒 issue。")
+        return
+
+    slug = _detect_repo_slug(repo_root)
+    if not slug:
+        print("无法解析仓库地址，跳过 issue 创建。")
+        return
+
+    mention = f"@{actor}" if actor else ""
+    body = f"{message}\\n\\n{mention}".strip()
+    title = f"Heatmap Painter quota exceeded {dt.datetime.utcnow().date().isoformat()}"
+
+    payload = json.dumps({"title": title, "body": body}).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{slug}/issues",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "heatmap-painter-bot",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as resp:
+            if 200 <= resp.status < 300:
+                print("已创建提醒 issue，等待用户处理。")
+            else:
+                print(f"创建 issue 失败，HTTP {resp.status}")
+    except urllib.error.HTTPError as exc:
+        error_text = exc.read().decode("utf-8", errors="ignore")
+        print(f"创建 issue 失败：{exc.code} {error_text}")
+    except Exception as exc:
+        print(f"创建 issue 出错：{exc}")
+
+
+def _detect_repo_slug(repo_root: Path) -> Optional[str]:
+    try:
+        proc = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            check=False,
+        )
+    except Exception:
+        return None
+    url = (proc.stdout or "").strip()
+    if not url:
+        return None
+    if url.endswith(".git"):
+        url = url[:-4]
+    if url.startswith("git@"):
+        try:
+            _, path = url.split(":", 1)
+            return path
+        except ValueError:
+            return None
+    if "github.com/" in url:
+        return url.split("github.com/")[-1]
+    return None
 
 
 if __name__ == "__main__":

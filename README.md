@@ -76,6 +76,11 @@ pip install requests windows-curses  # 视平台而定
    - 如果远端有新的提交导致冲突，会给出“先 pull 再试”的提示。  
    - 若希望自行处理，可直接在仓库目录运行常规 git 命令。
 
+6. **验证 GitHub Actions**  
+   推送完成后，前往 GitHub 仓库 → **Actions → Heatmap Painter**，手动触发一次 `workflow_dispatch` 或等待定时任务：  
+   - 日志显示 “已写入 X 行” 即为成功；  
+   - 若日志提示 “今日已有 X 次提交，超过目标 Y”，workflow 会失败，并且程序会在仓库中自动创建一个 issue，将报错信息和 `@GitHub 用户名` 一起提醒，确保你能及时关注。
+
 ## TUI 操作说明
 
 | 按键 | 功能 |
@@ -87,6 +92,7 @@ pip install requests windows-curses  # 视平台而定
 | 空格 | 在 0 与 5 之间切换 |
 | `C` / `c` | 按序循环 0 → 3 → 6 → 9 → 0 |
 | `T` | 文字模板，从当前列开始生成 5×7 点阵文本（填充值=9） |
+| `X` | 清空整个图案（会弹出确认） |
 | `Ctrl+S` | 保存并退出 |
 | `Q` | 放弃修改退出 |
 
@@ -118,7 +124,7 @@ pip install requests windows-curses  # 视平台而定
   - UTC 日期与 `start_date` 对比，算出当天索引（列×行）  
   - 若图案尚未开始 / 已完成 / 当前像素为 0，直接退出  
   - `daily` 模式下忽略图案，直接使用 `daily_commit_count` 作为目标，并不会等待周日  
-  - 在写入前会根据 `GITHUB_ACTOR`（或 `COMMITTER_NAME`）检查当日已有的提交次数，若已达到/超过目标则跳过或报错，让 Actions 能够感知“超标”状态  
+  - 在写入前会根据 `GITHUB_ACTOR`（或配置的 GitHub 用户名）检查当日已有的提交次数，若已达到/超过目标则终止并调用 GitHub API 创建新的 issue，同时 `@用户名`，从而在仓库中留下可追踪的提醒  
   - 根据 `DATA_DIR` 写入 `${DATA_DIR}/YYYY-MM-DD.txt`，不足的行数将补写随机内容  
   - 完成后执行 `git add` 目标文件，真正的 commit/push 由 workflow 统一处理  
   - 只依赖 `GITHUB_TOKEN`；不会接触本地 SSH 私钥或用户凭据
@@ -141,7 +147,7 @@ pip install requests windows-curses  # 视平台而定
 
 1. 确认 `ssh -T git@github.com` 可用，并在向导中填写正确的 `repo_ssh_url` 与 `repo_path`，让工具自动 clone。
 2. 运行 TUI 并保存图案后，关注程序自动 push 的输出；若失败，请按提示完成 SSH/权限配置后重试或手动运行 git 命令。
-3. 在 GitHub Actions 中手动触发 “Heatmap Painter” workflow 以验证。
+3. 在 GitHub Actions 中手动触发 “Heatmap Painter” workflow 并检查日志；若因超额提交失败，按照自动创建的 issue 指引处理。
 4. 等待 `start_date` 到来，观察热力图是否按预期变化。
 
 如有改进需求（例如新增图案、修改宽度、调整 workflow 频率），重新运行 `python main.py`、保存新图案并再次提交即可。

@@ -17,8 +17,7 @@ except ImportError:  # pragma: no cover - e.g. Windows without windows-curses
 DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 CTRL_S = 19  # ASCII XOFF
 HELP_TEXT = (
-    "Arrows/WASD 移动 · 0-9 设值 · 空格 0/5 · C 循环 0→3→6→9 · "
-    "T 文字模板 · Ctrl+S 保存 · Q 放弃"
+    "Arrows/WASD 移动 · 0-9 设值 · 空格 0/5 · C 循环 · T 文字 · X 清空 · Ctrl+S 保存 · Q 放弃"
 )
 
 # 5x7 dot-matrix glyphs for quick text stamping.
@@ -446,6 +445,15 @@ def _run_editor(stdscr: "curses._CursesWindow", pattern: List[List[int]], state)
             else:
                 message = "文字为空，已取消。"
             continue
+        if ch in (ord("x"), ord("X")):
+            if _confirm(stdscr, "确认清空整个图案？(y/N) "):
+                for r in range(rows):
+                    for c in range(cols):
+                        pattern[r][c] = 0
+                message = "已清空全部单元。"
+            else:
+                message = "已取消清空。"
+            continue
 
         message = f"未知按键：{ch}"
 
@@ -527,6 +535,25 @@ def _prompt_text(stdscr: "curses._CursesWindow", prompt: str) -> str:
         return raw.decode("utf-8").strip()
     except UnicodeDecodeError:
         return ""
+
+
+def _confirm(stdscr: "curses._CursesWindow", prompt: str) -> bool:
+    max_y, max_x = stdscr.getmaxyx()
+    line = max_y - 1
+    stdscr.move(line, 0)
+    stdscr.clrtoeol()
+    prompt_text = prompt[: max_x - 2] if max_x > 2 else ""
+    stdscr.addstr(line, 0, prompt_text)
+    stdscr.refresh()
+    curses.echo()
+    try:
+        raw = stdscr.getstr(line, len(prompt_text), 1)
+    except curses.error:
+        raw = b""
+    finally:
+        curses.noecho()
+    answer = (raw.decode("utf-8", errors="ignore") or "").strip().lower()
+    return answer == "y"
 
 
 def _stamp_text(pattern: List[List[int]], start_col: int, text: str) -> int:
