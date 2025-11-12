@@ -1,0 +1,10 @@
+{
+  "repo_ssh_url": "git@github.com:Felix3322/GitHubStreaker-test.git",
+  "repo_path": "./heatmap-repo",
+  "github_username": "Felix3322",
+  "committer_name": "Heatmap Bot",
+  "committer_email": "bot@example.com",
+  "data_dir": "heatmap",
+  "start_from_next_sunday": true,
+  "weeks": 52
+}
