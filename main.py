@@ -27,16 +27,24 @@ def main() -> int:
     cfg = _load_config()
     weeks = max(1, int(cfg.get("weeks", 52)))
     repo_path = Path(cfg["repo_path"])
+    mode = cfg["mode"]
 
     _show_repo_summary(repo_path)
 
     show_remote_heatmap(cfg.get("github_username", ""), min(30, weeks))
 
-    pattern = _load_existing_pattern(repo_path, weeks)
-    pattern, should_save = run_tui(pattern)
-    if not should_save:
-        print("[main] 未保存任何变更。")
-        return 0
+    pattern: List[List[int]] | None = None
+    should_save = True
+    if mode == "pattern":
+        pattern = _load_existing_pattern(repo_path, weeks)
+        pattern, should_save = run_tui(pattern)
+        if not should_save:
+            print("[main] 未保存任何变更。")
+            return 0
+    else:
+        print(
+            f"[main] 当前为每日定量模式：每天 {cfg['daily_commit_count']} 次提交，立即生效。",
+        )
 
     try:
         save_all(pattern, cfg)
@@ -62,17 +70,32 @@ def _load_config() -> dict:
         "committer_email",
         "data_dir",
         "weeks",
+        "mode",
+        "daily_commit_count",
     ]
 
     while True:
-        missing = [field for field in required if not cfg.get(field)]
+        missing = [field for field in required if field not in cfg]
         if not missing:
             break
         print(f"[config] 配置缺少字段：{', '.join(missing)}。即将重新进入配置向导。")
         cfg = _bootstrap_config()
 
     cfg["weeks"] = max(1, int(cfg.get("weeks", 52)))
+    mandatory_strings = ["repo_ssh_url", "repo_path", "committer_name", "committer_email", "data_dir"]
+    for key in mandatory_strings:
+        if not str(cfg.get(key, "")).strip():
+            print(f"[config] 字段 {key} 不能为空。")
+            raise SystemExit(1)
+    cfg["mode"] = str(cfg.get("mode", "pattern")).lower()
+    if cfg["mode"] not in ("pattern", "daily"):
+        print("[config] mode 应为 pattern 或 daily。")
+        raise SystemExit(1)
     cfg["start_from_next_sunday"] = bool(cfg.get("start_from_next_sunday", False))
+    cfg["daily_commit_count"] = int(cfg.get("daily_commit_count", 0))
+    if cfg["mode"] == "daily" and cfg["daily_commit_count"] <= 0:
+        print("[config] 每日定量模式需要 daily_commit_count > 0。")
+        raise SystemExit(1)
     cfg["data_dir"] = cfg.get("data_dir") or "heatmap"
     repo_root = _ensure_repo(cfg)
     cfg["repo_path"] = str(repo_root)
@@ -108,7 +131,13 @@ def _bootstrap_config() -> dict:
     committer_name = _prompt("提交者昵称 (Git)", "Heatmap Bot")
     committer_email = _prompt("提交者邮件 (Git)", "bot@example.com")
     data_dir = _prompt("数据目录 (相对仓库根)", "heatmap")
-    start_next = _prompt_bool("是否从下一个周日开始？(Y/n)", True)
+    mode = _prompt_mode()
+    start_next = False
+    daily_count = 0
+    if mode == "pattern":
+        start_next = _prompt_bool("是否从下一个周日开始？(Y/n)", True)
+    else:
+        daily_count = _prompt_int("每日提交次数 (1-100)", 1, min_value=1, max_value=100)
     weeks = _prompt_int("编辑多少周宽度？(1-104)", 52, min_value=1, max_value=104)
 
     cfg = {
@@ -118,7 +147,9 @@ def _bootstrap_config() -> dict:
         "committer_name": committer_name,
         "committer_email": committer_email,
         "data_dir": data_dir,
+        "mode": mode,
         "start_from_next_sunday": start_next,
+        "daily_commit_count": daily_count,
         "weeks": weeks,
     }
 
@@ -203,6 +234,14 @@ def _prompt_int(message: str, default: int, min_value: int, max_value: int) -> i
         return value
 
 
+def _prompt_mode() -> str:
+    while True:
+        raw = _prompt("提交模式 (pattern/daily)", "pattern").strip().lower()
+        if raw in ("pattern", "daily"):
+            return raw
+        print("请输入 pattern 或 daily。")
+
+
 def _show_repo_summary(repo_path: Path) -> None:
     print(f"[repo] 当前仓库：{repo_path}")
     status_proc = _run_git(repo_path, ["status", "-sb"], capture_output=True, check=False)
@@ -235,6 +274,11 @@ def _load_existing_pattern(repo_path: Path, weeks: int) -> List[List[int]]:
         data = json.loads(pattern_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"[pattern] 读取 pattern.json 失败：{exc}，使用空白模板。")
+        return _blank_pattern(weeks)
+
+    mode = (data.get("mode") or "pattern").lower()
+    if mode != "pattern":
+        print("[pattern] pattern.json 当前处于每日定量模式，使用空白模板。")
         return _blank_pattern(weeks)
 
     raw_pattern = data.get("pattern")
@@ -271,10 +315,9 @@ def _resize_pattern(pattern: List[List[int]], weeks: int) -> List[List[int]]:
         if len(row_copy) < weeks:
             row_copy.extend([0] * (weeks - len(row_copy)))
         adjusted.append(row_copy)
-    # 如果 pattern 少于 7 行，补零；多于 7 行则截断
-    if len(adjusted) < 7:
-        adjusted.extend(_blank_pattern(weeks)[len(adjusted):])
-    elif len(adjusted) > 7:
+    while len(adjusted) < 7:
+        adjusted.append([0 for _ in range(weeks)])
+    if len(adjusted) > 7:
         adjusted = adjusted[:7]
     return adjusted
 

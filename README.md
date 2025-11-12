@@ -45,7 +45,9 @@ pip install requests windows-curses  # 视平台而定
    - `github_username`: GitHub 用户名（用于抓取真实热力图）；默认值会自动取 `repo_ssh_url` 中的 owner
    - `committer_name`, `committer_email`: GitHub Actions 提交者信息
    - `data_dir`: 自动提交写入的目录（默认 `heatmap`）
-   - `start_from_next_sunday`: 是否从下一个周日开始生效
+   - `mode`: `pattern`（图案模式）或 `daily`（每日定量模式）
+   - `start_from_next_sunday`: 仅在 `pattern` 模式下询问，控制是否从下一个周日开始
+   - `daily_commit_count`: 仅在 `daily` 模式下询问，每天提交多少次
    - `weeks`: TUI 网格列数（周数，默认 52，范围 1-104）
 
    ### 初始化向导提示
@@ -57,8 +59,9 @@ pip install requests windows-curses  # 视平台而定
 2. **热力图预览 & 仓库状态检查**  
    每次运行都会先打印目标仓库的 `git status -sb` 以及最近一次提交，便于了解当前状态；随后抓取 GitHub 热力图并以彩色/ASCII 输出。若抓取失败会提示但不会中断流程。
 
-3. **编辑图案**  
-   进入 curses TUI。若目标仓库已有 `pattern.json`，会自动读取并填充到编辑器中，方便在原图基础上微调；否则使用 `7×weeks` 的全 0 网格。完成后按 `Ctrl+S` 保存或 `Q` 放弃。
+3. **编辑图案（pattern 模式）或确认每日模式**  
+   - `pattern` 模式：进入 curses TUI。若目标仓库已有 `pattern.json`，会自动读取并填充到编辑器中，方便在原图基础上微调；否则使用 `7×weeks` 的全 0 网格。TUI 支持文字模板功能，可在任意列输入字符串并生成 5×7 点阵。完成后按 `Ctrl+S` 保存或 `Q` 放弃。  
+   - `daily` 模式：无需编辑图案，程序会提示“每天 X 次提交，立即生效”，并直接生成所需脚本。
 
 4. **生成文件**  
    保存后调用 `save_all` 将以下文件写入 `repo_path`：
@@ -83,6 +86,7 @@ pip install requests windows-curses  # 视平台而定
 | `0-9` | 将当前格子设置为对应提交次数 |
 | 空格 | 在 0 与 5 之间切换 |
 | `C` / `c` | 按序循环 0 → 3 → 6 → 9 → 0 |
+| `T` | 文字模板，从当前列开始生成 5×7 点阵文本（填充值=9） |
 | `Ctrl+S` | 保存并退出 |
 | `Q` | 放弃修改退出 |
 
@@ -93,11 +97,15 @@ pip install requests windows-curses  # 视平台而定
 - `pattern.json`  
   ```json
   {
+    "mode": "pattern",
     "start_date": "YYYY-MM-DD",
-    "pattern": [[...7 rows...]]
+    "pattern": [[...7 rows...]],
+    "daily_commit_count": 0
   }
   ```
-  `start_date` 根据配置决定是“今天”还是“下一个周日”；后续所有计算以此固定日期为基准。
+  `mode` 决定 painter 的行为：  
+  - `pattern`：按 7×N 图案逐日绘制。`start_date` 由「是否从下一个周日开始」控制。  
+  - `daily`：忽略图案、直接按 `daily_commit_count` 每天提交固定次数，并立即生效（start_date = 生成当天）。
 
 - `.github/workflows/heatmap.yml`  
   - 触发：每 30 分钟 + `workflow_dispatch`
@@ -109,6 +117,7 @@ pip install requests windows-curses  # 视平台而定
 - `tools/heatmap_painter.py`  
   - UTC 日期与 `start_date` 对比，算出当天索引（列×行）  
   - 若图案尚未开始 / 已完成 / 当前像素为 0，直接退出  
+  - `daily` 模式下忽略图案，直接使用 `daily_commit_count` 作为目标，并不会等待周日  
   - 在写入前会根据 `GITHUB_ACTOR`（或 `COMMITTER_NAME`）检查当日已有的提交次数，若已达到/超过目标则跳过或报错，让 Actions 能够感知“超标”状态  
   - 根据 `DATA_DIR` 写入 `${DATA_DIR}/YYYY-MM-DD.txt`，不足的行数将补写随机内容  
   - 完成后执行 `git add` 目标文件，真正的 commit/push 由 workflow 统一处理  

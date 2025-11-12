@@ -5,6 +5,8 @@
   "committer_name": "Heatmap Bot",
   "committer_email": "bot@example.com",
   "data_dir": "heatmap",
+  "mode": "pattern",
   "start_from_next_sunday": true,
+  "daily_commit_count": 0,
   "weeks": 52
 }

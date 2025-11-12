@@ -18,9 +18,345 @@ DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 CTRL_S = 19  # ASCII XOFF
 HELP_TEXT = (
     "Arrows/WASD 移动 · 0-9 设值 · 空格 0/5 · C 循环 0→3→6→9 · "
-    "Ctrl+S 保存 · Q 放弃"
+    "T 文字模板 · Ctrl+S 保存 · Q 放弃"
 )
 
+# 5x7 dot-matrix glyphs for quick text stamping.
+TEXT_GLYPHS: Dict[str, List[str]] = {
+    "A": [
+        " ### ",
+        "#   #",
+        "#   #",
+        "#####",
+        "#   #",
+        "#   #",
+        "#   #",
+    ],
+    "B": [
+        "#### ",
+        "#   #",
+        "#   #",
+        "#### ",
+        "#   #",
+        "#   #",
+        "#### ",
+    ],
+    "C": [
+        " ### ",
+        "#   #",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#   #",
+        " ### ",
+    ],
+    "D": [
+        "#### ",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#### ",
+    ],
+    "E": [
+        "#####",
+        "#    ",
+        "#    ",
+        "#### ",
+        "#    ",
+        "#    ",
+        "#####",
+    ],
+    "F": [
+        "#####",
+        "#    ",
+        "#    ",
+        "#### ",
+        "#    ",
+        "#    ",
+        "#    ",
+    ],
+    "G": [
+        " ### ",
+        "#   #",
+        "#    ",
+        "#  ##",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "H": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "#####",
+        "#   #",
+        "#   #",
+        "#   #",
+    ],
+    "I": [
+        " ### ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        " ### ",
+    ],
+    "J": [
+        "  ###",
+        "   # ",
+        "   # ",
+        "   # ",
+        "#  # ",
+        "#  # ",
+        " ##  ",
+    ],
+    "K": [
+        "#   #",
+        "#  # ",
+        "# #  ",
+        "##   ",
+        "# #  ",
+        "#  # ",
+        "#   #",
+    ],
+    "L": [
+        "#    ",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#####",
+    ],
+    "M": [
+        "#   #",
+        "## ##",
+        "# # #",
+        "# # #",
+        "#   #",
+        "#   #",
+        "#   #",
+    ],
+    "N": [
+        "#   #",
+        "##  #",
+        "# # #",
+        "#  ##",
+        "#   #",
+        "#   #",
+        "#   #",
+    ],
+    "O": [
+        " ### ",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "P": [
+        "#### ",
+        "#   #",
+        "#   #",
+        "#### ",
+        "#    ",
+        "#    ",
+        "#    ",
+    ],
+    "Q": [
+        " ### ",
+        "#   #",
+        "#   #",
+        "#   #",
+        "# # #",
+        "#  ##",
+        " ####",
+    ],
+    "R": [
+        "#### ",
+        "#   #",
+        "#   #",
+        "#### ",
+        "# #  ",
+        "#  # ",
+        "#   #",
+    ],
+    "S": [
+        " ####",
+        "#    ",
+        "#    ",
+        " ### ",
+        "    #",
+        "    #",
+        "#### ",
+    ],
+    "T": [
+        "#####",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+    ],
+    "U": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "V": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        " # # ",
+        " # # ",
+        "  #  ",
+    ],
+    "W": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "# # #",
+        "# # #",
+        "## ##",
+        "#   #",
+    ],
+    "X": [
+        "#   #",
+        "#   #",
+        " # # ",
+        "  #  ",
+        " # # ",
+        "#   #",
+        "#   #",
+    ],
+    "Y": [
+        "#   #",
+        "#   #",
+        " # # ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+    ],
+    "Z": [
+        "#####",
+        "    #",
+        "   # ",
+        "  #  ",
+        " #   ",
+        "#    ",
+        "#####",
+    ],
+    "0": [
+        " ### ",
+        "#   #",
+        "#  ##",
+        "# # #",
+        "##  #",
+        "#   #",
+        " ### ",
+    ],
+    "1": [
+        "  #  ",
+        " ##  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        " ### ",
+    ],
+    "2": [
+        " ### ",
+        "#   #",
+        "    #",
+        "   # ",
+        "  #  ",
+        " #   ",
+        "#####",
+    ],
+    "3": [
+        " ### ",
+        "#   #",
+        "    #",
+        " ### ",
+        "    #",
+        "#   #",
+        " ### ",
+    ],
+    "4": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "#####",
+        "    #",
+        "    #",
+        "    #",
+    ],
+    "5": [
+        "#####",
+        "#    ",
+        "#    ",
+        "#### ",
+        "    #",
+        "    #",
+        "#### ",
+    ],
+    "6": [
+        " ### ",
+        "#    ",
+        "#    ",
+        "#### ",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "7": [
+        "#####",
+        "    #",
+        "   # ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+    ],
+    "8": [
+        " ### ",
+        "#   #",
+        "#   #",
+        " ### ",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "9": [
+        " ### ",
+        "#   #",
+        "#   #",
+        " ####",
+        "    #",
+        "    #",
+        " ### ",
+    ],
+    " ": [
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+    ],
+}
 
 def run_tui(initial_pattern: List[List[int]]) -> Tuple[List[List[int]], bool]:
     """
@@ -102,6 +438,14 @@ def _run_editor(stdscr: "curses._CursesWindow", pattern: List[List[int]], state)
         if ch in (ord("c"), ord("C")):
             pattern[cursor_row][cursor_col] = _cycle(pattern[cursor_row][cursor_col])
             continue
+        if ch in (ord("t"), ord("T")):
+            text = _prompt_text(stdscr, "输入要绘制的文字（英数字）：")
+            if text:
+                applied = _stamp_text(pattern, cursor_col, text)
+                message = f"已应用文字：{text.upper()}（{applied} 列）"
+            else:
+                message = "文字为空，已取消。"
+            continue
 
         message = f"未知按键：{ch}"
 
@@ -160,6 +504,55 @@ def _draw(
         stdscr.addstr(max_y - 2, 0, message[: _max_x - 1])
 
     stdscr.refresh()
+
+
+def _prompt_text(stdscr: "curses._CursesWindow", prompt: str) -> str:
+    max_y, max_x = stdscr.getmaxyx()
+    line = max_y - 1
+    stdscr.move(line, 0)
+    stdscr.clrtoeol()
+    prompt_text = prompt[: max_x - 2] if max_x > 2 else ""
+    stdscr.addstr(line, 0, prompt_text)
+    stdscr.refresh()
+    curses.echo()
+    start_x = len(prompt_text)
+    input_width = max(1, max_x - start_x - 1)
+    try:
+        raw = stdscr.getstr(line, start_x, input_width)
+    except curses.error:
+        raw = b""
+    finally:
+        curses.noecho()
+    try:
+        return raw.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return ""
+
+
+def _stamp_text(pattern: List[List[int]], start_col: int, text: str) -> int:
+    text = (text or "").upper()
+    cols = len(pattern[0])
+    applied_cols = 0
+    col_ptr = max(0, min(start_col, cols - 1))
+    total_rows = len(pattern)
+    for char in text:
+        glyph = TEXT_GLYPHS.get(char)
+        if glyph is None:
+            col_ptr += 1
+            continue
+        width = len(glyph[0])
+        for row in range(min(len(glyph), total_rows)):
+            for x in range(width):
+                dest_col = col_ptr + x
+                if dest_col >= cols:
+                    break
+                if glyph[row][x] != " ":
+                    pattern[row][dest_col] = 9
+        col_ptr += width + 1
+        applied_cols = max(applied_cols, col_ptr - start_col)
+        if col_ptr >= cols:
+            break
+    return applied_cols
 
 
 def _setup_color_pairs() -> Dict[int, int]:

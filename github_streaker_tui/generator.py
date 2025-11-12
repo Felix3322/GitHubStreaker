@@ -13,17 +13,27 @@ from pathlib import Path
 from typing import List
 
 
-def save_all(pattern: List[List[int]], cfg: dict) -> None:
+def save_all(pattern: List[List[int]] | None, cfg: dict) -> None:
     repo_path = Path(cfg["repo_path"]).expanduser().resolve()
     if not repo_path.exists():
         raise FileNotFoundError(f"目标仓库不存在：{repo_path}")
 
-    if len(pattern) != 7 or any(len(row) != len(pattern[0]) for row in pattern):
-        raise ValueError("Pattern 必须为 7×N 矩阵。")
+    mode = cfg.get("mode", "pattern")
+    weeks = max(1, int(cfg.get("weeks", 52)))
+    if mode == "pattern":
+        if pattern is None:
+            raise ValueError("Pattern 模式需要图案矩阵。")
+        if len(pattern) != 7 or any(len(row) != len(pattern[0]) for row in pattern):
+            raise ValueError("Pattern 必须为 7×N 矩阵。")
+    else:
+        daily_count = int(cfg.get("daily_commit_count", 0))
+        if daily_count <= 0:
+            raise ValueError("每日定量模式需要正数 daily_commit_count。")
+        pattern = _build_daily_pattern(daily_count, weeks)
 
-    start_date = _calculate_start_date(bool(cfg.get("start_from_next_sunday")))
+    start_date = _calculate_start_date(bool(cfg.get("start_from_next_sunday")), mode)
 
-    _write_pattern_json(repo_path, pattern, start_date)
+    _write_pattern_json(repo_path, pattern, start_date, mode, int(cfg.get("daily_commit_count", 0)))
     _write_workflow(repo_path, cfg)
     _write_painter_script(repo_path)
     _write_agreement(repo_path)
@@ -31,22 +41,38 @@ def save_all(pattern: List[List[int]], cfg: dict) -> None:
     print(f"[generator] 已生成 heatmap 相关文件于：{repo_path}")
 
 
-def _calculate_start_date(start_from_next_sunday: bool) -> _dt.date:
+def _calculate_start_date(start_from_next_sunday: bool, mode: str) -> _dt.date:
     today = _dt.date.today()
+    if mode != "pattern":
+        return today
     if not start_from_next_sunday:
         return today
     delta = (6 - today.weekday()) % 7  # Next Sunday, inclusive
     return today + _dt.timedelta(days=delta)
 
 
-def _write_pattern_json(repo_path: Path, pattern: List[List[int]], start_date: _dt.date) -> None:
+def _write_pattern_json(
+    repo_path: Path,
+    pattern: List[List[int]],
+    start_date: _dt.date,
+    mode: str,
+    daily_commit_count: int,
+) -> None:
     data = {
+        "mode": mode,
         "start_date": start_date.isoformat(),
         "pattern": pattern,
+        "daily_commit_count": daily_commit_count,
     }
     path = repo_path / "pattern.json"
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     print(f"[generator] 写入 {path}")
+
+
+def _build_daily_pattern(daily: int, weeks: int) -> List[List[int]]:
+    daily = max(0, int(daily))
+    weeks = max(1, int(weeks))
+    return [[daily for _ in range(weeks)] for _ in range(7)]
 
 
 def _write_workflow(repo_path: Path, cfg: dict) -> None:
@@ -146,10 +172,11 @@ def main() -> int:
         print("pattern.json:start_date 无效。")
         return 1
 
+    mode = (data.get("mode") or "pattern").lower()
+    if mode not in ("pattern", "daily"):
+        mode = "pattern"
     pattern = data.get("pattern") or []
-    if len(pattern) < 7:
-        print("pattern.json:pattern 结构非法。")
-        return 1
+    daily_goal = int(data.get("daily_commit_count") or 0)
 
     today = dt.datetime.utcnow().date()
     delta = (today - start_date).days
@@ -157,27 +184,34 @@ def main() -> int:
         print("图案尚未开始。")
         return 0
 
-    first_row = pattern[0]
-    if any(len(row) != len(first_row) for row in pattern[:7]):
-        print("pattern.json:pattern 列长度不一致。")
-        return 1
-
-    cols = len(first_row)
-    if cols == 0:
-        print("图案宽度为 0。")
-        return 0
-
-    idx = delta
-    col = idx // 7
-    row = idx % 7
-    if col >= cols:
-        print("图案已经完成。")
-        return 0
-
-    try:
-        need = int(pattern[row][col])
-    except (ValueError, TypeError):
-        need = 0
+    need = 0
+    if mode == "daily":
+        need = max(0, daily_goal)
+        if need <= 0:
+            print("每日定量模式未配置 daily_commit_count。")
+            return 1
+    else:
+        if len(pattern) < 7:
+            print("pattern.json:pattern 结构非法。")
+            return 1
+        first_row = pattern[0]
+        if any(len(row) != len(first_row) for row in pattern[:7]):
+            print("pattern.json:pattern 列长度不一致。")
+            return 1
+        cols = len(first_row)
+        if cols == 0:
+            print("图案宽度为 0。")
+            return 0
+        idx = delta
+        col = idx // 7
+        row = idx % 7
+        if col >= cols:
+            print("图案已经完成。")
+            return 0
+        try:
+            need = int(pattern[row][col])
+        except (ValueError, TypeError):
+            need = 0
 
     identity = os.environ.get("GITHUB_ACTOR") or os.environ.get("COMMITTER_NAME")
     commits_today = _count_commits_today(repo_root, identity)
